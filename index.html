@@ -27,9 +27,11 @@
     <div id="zoom_controls">
         <button style="float:left;margin-left:1em;" onclick="zoom_out()">Zoom Out</button>
         <button style="float:right;margin-right:1em;" onclick="zoom_in()">Zoom In</button><div id="navigation">
-        <a href="fourSquare.html">Foursquare API Demo</a>
+        <a href="fourSquare.html">Foursquare API Demo</a>    <div id="location"><button onclick="loc()">Whats my location</button></div>
+
     </div>
     </div>
+
 
 
 
@@ -171,6 +173,10 @@
         function zoom_in(){
             if(current_zoom < 19){current_zoom++;}
             set_location(current_lat,current_long);
+        }
+
+        function loc(){
+            alert("You are at " + current_lat + " Latitude and " + current_long + " Longitude");
         }
 
 
