@@ -1,0 +1,232 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=yes" />
+<title>Slippy Map Test</title>
+<style>
+.map_container{
+	position:absolute; 
+	left:0;
+	top:0;
+	width:320px; 
+	height:325px;
+	color:#666666;
+	overflow:scroll;
+}
+
+.map_div{
+	position:absolute;
+	width:256px;
+	height:256px;
+	margin:0;
+}
+
+.map_img{
+	margin-left:0;
+	margin-top:0;
+	width:256px;
+	height:256px;
+}
+
+#locator{
+	position:absolute; 
+	z-index:1;
+}
+
+#loc_img{
+	margin:0;
+}
+
+#zoom_controls{
+	position:absolute;
+	top:330px;
+	left:0;
+	width:310px;
+}
+</style>
+<script src="js/jquery-1.10.2.min.js"></script>
+<script type="text/javascript">
+
+var current_lat;
+var current_long;
+var current_zoom = 16;
+var current_x_pix = 380;
+var current_y_pix = 380;
+var map_width = 320;
+var map_height = 330;
+
+//images are tiled in a 3x3 grid
+var map_00 = new Image();
+var map_01 = new Image();
+var map_02 = new Image();
+var map_10 = new Image();
+var map_11 = new Image();
+var map_12 = new Image();
+var map_20 = new Image();
+var map_21 = new Image();
+var map_22 = new Image();
+	
+var locator_img = new Image();
+locator_img.src = "locator.png";
+
+/////////////////////////////////////////////////////////////////////////////////////////////////	
+//starting math for lat/long functions	
+//function long2tile(lon,zoom) { return (Math.floor((lon+180)/360*Math.pow(2,zoom))); }
+//function lat2tile(lat,zoom)  { return (Math.floor((1-Math.log(Math.tan(lat*Math.PI/180) + 1/Math.cos(lat*Math.PI/180))/Math.PI)/2 *Math.pow(2,zoom))); }
+////////////////////////////////////////////////////////////////////////////////////////////////
+ 
+ function set_location(this_lat,this_long){
+	current_lat = this_lat;
+	current_long = this_long;
+	var x_pos = (this_long+180)/360*Math.pow(2,current_zoom);
+	var y_pos = (1-Math.log(Math.tan(this_lat*Math.PI/180) + 1/Math.cos(this_lat*Math.PI/180))/Math.PI)/2 *Math.pow(2,current_zoom);
+	var x_tile = Math.floor(x_pos);
+	var y_tile = Math.floor(y_pos);
+	//top row
+	map_00.src = "http://a.tile.openstreetmap.org/"+current_zoom+"/"+(x_tile-1)+"/"+(y_tile-1)+".png";
+	map_01.src = "http://a.tile.openstreetmap.org/"+current_zoom+"/"+(x_tile)+"/"+(y_tile-1)+".png";
+	map_02.src = "http://a.tile.openstreetmap.org/"+current_zoom+"/"+(x_tile+1)+"/"+(y_tile-1)+".png";
+	//middle row
+	map_10.src = "http://a.tile.openstreetmap.org/"+current_zoom+"/"+(x_tile-1)+"/"+(y_tile)+".png";
+	map_11.src = "http://a.tile.openstreetmap.org/"+current_zoom+"/"+x_tile+"/"+y_tile+".png";
+	map_12.src = "http://a.tile.openstreetmap.org/"+current_zoom+"/"+(x_tile+1)+"/"+(y_tile)+".png";
+	//bottom row
+	map_20.src = "http://a.tile.openstreetmap.org/"+current_zoom+"/"+(x_tile-1)+"/"+(y_tile+1)+".png";
+	map_21.src = "http://a.tile.openstreetmap.org/"+current_zoom+"/"+(x_tile)+"/"+(y_tile+1)+".png";
+	map_22.src = "http://a.tile.openstreetmap.org/"+current_zoom+"/"+(x_tile+1)+"/"+(y_tile+1)+".png";
+	
+	x_factor = x_pos - x_tile;
+	y_factor = y_pos - y_tile;
+	
+	x_pix = (256+(256*x_factor))-(locator_img.width*0.5);
+	y_pix = (256+(256*y_factor))-(locator_img.height*0.5);
+	
+	current_x_pix = x_pix;
+	current_y_pix = y_pix;
+	
+	var scrollleft_pos =  x_pix-(map_width/2);
+	var scrolltop_pos = y_pix-(map_height/2);
+	$("#map_window").scrollTop(scrolltop_pos);
+	$("#map_window").scrollLeft(scrollleft_pos);
+	
+	draw_the_map(x_pix,y_pix);
+ }
+ 
+ function draw_the_map(x_pix,y_pix){
+	 //top row
+	$("#mdiv_00").html("<img class=\"map_img\" src=\""+map_00.src+"\" />");
+	$("#mdiv_01").html("<img class=\"map_img\" src=\""+map_01.src+"\" />");
+	$("#mdiv_02").html("<img class=\"map_img\" src=\""+map_02.src+"\" />");
+	//middle row
+	$("#mdiv_10").html("<img class=\"map_img\" src=\""+map_10.src+"\" />");
+	$("#mdiv_11").html("<img class=\"map_img\" src=\""+map_11.src+"\" />");
+	$("#mdiv_12").html("<img class=\"map_img\" src=\""+map_12.src+"\" />");
+	//bottom row
+	$("#mdiv_20").html("<img class=\"map_img\" src=\""+map_20.src+"\" />");
+	$("#mdiv_21").html("<img class=\"map_img\" src=\""+map_21.src+"\" />");
+	$("#mdiv_22").html("<img class=\"map_img\" src=\""+map_22.src+"\" />");
+	
+	//put the locator in place
+	$("#locator").css("left", x_pix+"px");
+	$("#locator").css("top", y_pix+"px");
+
+}
+ 
+	var watchProcess = null;  
+	   
+    function initiate_watchlocation() {  
+	 	if (watchProcess == null) {  
+			monitor_location = true;
+			watchProcess = navigator.geolocation.watchPosition(handle_geolocation_query, handle_errors,{'enableHighAccuracy':true,'timeout':10000,'maximumAge':20000}); 
+		}  
+     }  
+	 
+	 function stop_watchlocation() {  
+		    if (watchProcess != null){  
+					monitor_location = false;
+					navigator.geolocation.clearWatch(watchProcess);  
+					watchProcess = null;  
+				}  
+        }  
+  
+        function handle_errors(error) {  
+            switch(error.code)  {  
+                case error.PERMISSION_DENIED: alert("User did not share geolocation data");  break;  
+                case error.POSITION_UNAVAILABLE: 
+					alert("Geolocation could not detect current position.");  
+					stop_watchlocation();
+					initiate_watchlocation();
+					break;  
+                case error.TIMEOUT: 
+					//alert("Geolocation Position Timeout");
+					stop_watchlocation();
+					initiate_watchlocation();
+					break; 
+                default: alert("Unknown Geolocation Error");  break;  
+            }  
+        }  
+  
+        function handle_geolocation_query(position) {  
+			current_lat = position.coords.latitude;
+			current_long = position.coords.longitude;
+			set_location(position.coords.latitude, position.coords.longitude);	
+        } 
+		
+		$(window).unload(function(){
+  			window.navigator.geolocation.clearWatch(watchProcess);
+			watchProcess = null; 
+		});	
+	
+	function zoom_out(){
+		if(current_zoom > 0){current_zoom--;}
+		set_location(current_lat,current_long);
+	}
+	
+	function zoom_in(){
+		if(current_zoom < 19){current_zoom++;}
+		set_location(current_lat,current_long);
+	}
+
+	
+	
+	$(document).ready(function(){ 
+		navigator.geolocation.getCurrentPosition(handle_geolocation_query);
+     	initiate_watchlocation();
+     });
+	
+	</script>
+
+
+
+</head>
+
+<body>
+
+	<div id="map_window" class="map_container">
+		<div id="mdiv_00" class="map_div" style="top:    0;left:    0;"></div>
+		<div id="mdiv_01" class="map_div" style="top:    0;left:256px;"></div>
+		<div id="mdiv_02" class="map_div" style="top:    0;left:512px;"></div>
+		<div id="mdiv_10" class="map_div" style="top:256px;left:    0;"></div>
+		<div id="mdiv_11" class="map_div" style="top:256px;left:256px;"></div>
+		<div id="mdiv_12" class="map_div" style="top:256px;left:512px;"></div>
+		<div id="mdiv_20" class="map_div" style="top:512px;left:    0;"></div>
+		<div id="mdiv_21" class="map_div" style="top:512px;left:256px;"></div>
+		<div id="mdiv_22" class="map_div" style="top:512px;left:512px;"></div>
+                        
+		<div id="locator"><img id="loc_img" src="locator.png"/></div>
+                        
+		<!--<canvas width="768" height="768" id="map"></canvas>-->
+	</div>
+        
+        <div id="zoom_controls">
+        	<button style="float:left;margin-left:1em;" onclick="javascript:zoom_out()">Zoom Out</button>
+            <button style="float:right;margin-right:1em;" onclick="javascript:zoom_in()">Zoom In</button><div id="navigation">
+            <a href="fourSquare.html">Foursquare API Demo</a>
+        </div>
+        </div>
+
+
+
+</body>
+</html>

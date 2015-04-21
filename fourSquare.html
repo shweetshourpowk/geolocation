@@ -1,0 +1,458 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=yes" />
+<link rel="stylesheet" href="css/n413_4sq_main.css">
+<title>Find Foursquare Venues</title>
+<script src="js/jquery-1.10.2.min.js"></script>
+
+<script type="text/javascript">
+
+//set up some global variables
+var current_lat;
+var current_long;
+var current_zoom = 16;
+var current_x_pix = 380;
+var current_y_pix = 380;
+var map_width = 320;
+var map_height = 330;
+var x_tile;
+var y_tile;
+var venue_list = [];
+var current_loc_venue_index = null;
+var current_venue_category = "";
+
+
+
+//images are tiled in a 3x3 grid
+var map_00 = new Image();
+var map_01 = new Image();
+var map_02 = new Image();
+var map_10 = new Image();
+var map_11 = new Image();
+var map_12 = new Image();
+var map_20 = new Image();
+var map_21 = new Image();
+var map_22 = new Image();
+
+var locator = new Image();
+locator.src = "locator.png";
+
+var map_pin = new Image();
+map_pin.src = "red_pin_36.png";
+
+var loc_menu_bg = new Image();
+loc_menu_bg.src = "location_menu_150.png";
+
+//-------------------  MAP DRAWING FUNCTIONS  --------------------------------
+
+/////////////////////////////////////////////////////////////////////////////////////////////////	
+//starting math for lat/long functions	
+//function long2tile(lon,zoom) { return (Math.floor((lon+180)/360*Math.pow(2,zoom))); }
+//function lat2tile(lat,zoom)  { return (Math.floor((1-Math.log(Math.tan(lat*Math.PI/180) + 1/Math.cos(lat*Math.PI/180))/Math.PI)/2 *Math.pow(2,zoom))); }
+////////////////////////////////////////////////////////////////////////////////////////////////
+
+function get_xy_position(this_lat,this_long){
+    var x_pos = (this_long+180)/360*Math.pow(2,current_zoom);
+    var y_pos = (1-Math.log(Math.tan(this_lat*Math.PI/180) + 1/Math.cos(this_lat*Math.PI/180))/Math.PI)/2 *Math.pow(2,current_zoom);
+    return {x:x_pos,y:y_pos};
+}
+
+function get_xy_pix(pos, registration_point, tile_offset){
+    //get the fractional part of the position values
+    var x_factor = pos.x - Math.floor(pos.x);
+    var y_factor = pos.y - Math.floor(pos.y);
+    //add the x,y, location of the tile to the proportional distance into the tile, less the reg.point of the graphic
+    var x_pix = (tile_offset.x+(256*x_factor))-(registration_point.x);
+    var y_pix = (tile_offset.y+(256*y_factor))-(registration_point.y);
+
+    return {x:x_pix,y:y_pix};
+}
+
+
+function set_location(this_lat,this_long){
+    current_lat = this_lat;
+    current_long = this_long;
+
+    var this_pos = get_xy_position(this_lat,this_long);
+
+    //set global variables for the x-tile/y_tile
+    x_tile = Math.floor(this_pos.x);
+    y_tile = Math.floor(this_pos.y);
+
+    //top row
+    map_00.src = "http://a.tile.openstreetmap.org/"+current_zoom+"/"+(x_tile-1)+"/"+(y_tile-1)+".png";
+    map_01.src = "http://a.tile.openstreetmap.org/"+current_zoom+"/"+(x_tile)+"/"+(y_tile-1)+".png";
+    map_02.src = "http://a.tile.openstreetmap.org/"+current_zoom+"/"+(x_tile+1)+"/"+(y_tile-1)+".png";
+    //middle row
+    map_10.src = "http://a.tile.openstreetmap.org/"+current_zoom+"/"+(x_tile-1)+"/"+(y_tile)+".png";
+    map_11.src = "http://a.tile.openstreetmap.org/"+current_zoom+"/"+x_tile+"/"+y_tile+".png";
+    map_12.src = "http://a.tile.openstreetmap.org/"+current_zoom+"/"+(x_tile+1)+"/"+(y_tile)+".png";
+    //bottom row
+    map_20.src = "http://a.tile.openstreetmap.org/"+current_zoom+"/"+(x_tile-1)+"/"+(y_tile+1)+".png";
+    map_21.src = "http://a.tile.openstreetmap.org/"+current_zoom+"/"+(x_tile)+"/"+(y_tile+1)+".png";
+    map_22.src = "http://a.tile.openstreetmap.org/"+current_zoom+"/"+(x_tile+1)+"/"+(y_tile+1)+".png";
+
+    var tile_offset = {x:256,y:256};//place the locator in the center tile, with origin at (256,256)
+    var registration_point = {x:locator.width*0.5, y:locator.height*0.5};
+    var xy_pix = get_xy_pix(this_pos, registration_point, tile_offset);
+
+    current_x_pix = xy_pix.x;
+    current_y_pix = xy_pix.y;
+
+    var scrollleft_pos =  xy_pix.x-(map_width/2);
+    var scrolltop_pos = xy_pix.y-(map_height/2);
+    $("#map_window").scrollTop(scrolltop_pos);
+    $("#map_window").scrollLeft(scrollleft_pos);
+
+    draw_the_map(xy_pix);
+}
+
+function draw_the_map(xy_pix){
+    // remove the pins and location menu
+
+    $("#loc_menu").remove();
+    $(".pin").remove();
+
+    //top row
+    $("#mdiv_00").html("<img class=\"map_img\" src=\""+map_00.src+"\" />");
+    $("#mdiv_01").html("<img class=\"map_img\" src=\""+map_01.src+"\" />");
+    $("#mdiv_02").html("<img class=\"map_img\" src=\""+map_02.src+"\" />");
+    //middle row
+    $("#mdiv_10").html("<img class=\"map_img\" src=\""+map_10.src+"\" />");
+    $("#mdiv_11").html("<img class=\"map_img\" src=\""+map_11.src+"\" />");
+    $("#mdiv_12").html("<img class=\"map_img\" src=\""+map_12.src+"\" />");
+    //bottom row
+    $("#mdiv_20").html("<img class=\"map_img\" src=\""+map_20.src+"\" />");
+    $("#mdiv_21").html("<img class=\"map_img\" src=\""+map_21.src+"\" />");
+    $("#mdiv_22").html("<img class=\"map_img\" src=\""+map_22.src+"\" />");
+
+    //put the locator in place
+    $("#locator").css("left", xy_pix.x+"px");
+    $("#locator").css("top", xy_pix.y+"px");
+
+    //if there is a list of venues, dreaw a pin for each one, but don't animate them
+    for(i=0;i<venue_list.length;i++){
+        place_pin(venue_list[i], i, false);
+        if(i == current_loc_venue_index){
+            //if there is an open location menu, draw it
+            show_loc_menu(i);
+        }
+    }
+
+}
+
+//draw the pin and animate it if the pin refresh is the result of user action
+function place_pin(this_venue, index, do_animation){
+    var this_pos = get_xy_position(this_venue.location.lat,this_venue.location.lng);
+    //find which tile in the 3x3 grid we place the pin in --x_tile/y_tile is the center tile in the grid
+    this_x_tile = Math.floor(this_pos.x) - x_tile;
+    this_y_tile = Math.floor(this_pos.y) - y_tile;
+    //find the starting xy of the pin's tile
+    var tile_offset = {x:256*(this_x_tile+1),y:256*(this_y_tile+1)};
+    var registration_point = {x:map_pin.width*0.2, y:map_pin.height*0.9};
+    var xy_pix = get_xy_pix(this_pos, registration_point, tile_offset);
+
+    //if we are refreshing the pins from user action, we will animate the pin -- start it above the map
+    if(do_animation){
+        start_y = -50;
+    }else{
+        start_y = xy_pix.y;
+    }
+    //place the lower pins in front of higher ones
+    z_order = Math.round(xy_pix.y);
+
+    //draw the pin
+    $("#map_window").append("<div id='pin_"+index+"' class='pin' style='left:"+xy_pix.x+"px;top:"+start_y+"px;z-index:"+z_order+";' onclick=\"javascript:show_loc_menu('"+index+"');\"><img src='red_pin_36.png' /></div>");
+
+    if(do_animation){
+        //vary the speed, with back pins being slower
+        animation_speed = (250+(500-z_order))/2;
+        //use the jQuery animate method
+        //pins go from -50 to their calculated position at the calculated speed, with "linear" easing -see jQuery docs
+        $("#pin_"+index).animate({top:xy_pix.y},animation_speed,"linear");
+    }
+}
+
+function show_loc_menu(index){
+    //clear any current location menu
+    $("#loc_menu").remove();
+    //check to be sure the index value is valid
+    if((index >= 0)&&(index < venue_list.length)){
+        if(venue_list[index] != null){
+            this_venue = venue_list[index];
+            var this_pos = get_xy_position(this_venue.location.lat,this_venue.location.lng);
+            this_x_tile = Math.floor(this_pos.x) - x_tile;
+            this_y_tile = Math.floor(this_pos.y) - y_tile;
+            //find the starting xy of the pin's tile
+            var tile_offset = {x:256*(this_x_tile+1),y:256*(this_y_tile+1)};
+            var registration_point = {x:map_pin.width*0.2, y:map_pin.height*0.9};
+            var xy_pix = get_xy_pix(this_pos, registration_point, tile_offset);
+
+            //store the currently showing location venue's index in a global variable for later use
+            current_loc_venue_index = index;
+
+            //draw the location menu
+            $("#map_window").append("<div id='loc_menu' style='left:"+(xy_pix.x-68)+"px;top:"+(xy_pix.y-32)+"px;' ><div id='loc_name'></div></div>");
+
+            //check for an icon URL and draw it if it exists
+            if(this_venue.categories[0] != null){
+                icon = this_venue.categories[0].icon;
+                icon_src = icon.prefix + "bg_32" + icon.suffix;
+                $("#loc_name").append("<img src='"+icon_src+"' style='width:16px;height:16px;margin-top:4px;' />");
+            }
+
+            //check for a menu object with a mobileURL and draw a button for a link if the menu exists
+            if(this_venue.menu != null){
+                if(venue_list[index].menu.mobileUrl != null){
+                    $("#loc_name").append("<a href='"+this_venue.menu.mobileUrl+"' target='_blank'><img src='arrow_icon_28.png' style='float:right;margin-right:5px;margin-top:1px;width:22px;height:22px;'/></a>");
+                }
+            }
+
+            //draw the venue name, and adjust the position of the text if an icon exists
+            if(this_venue.categories[0] != null){
+                //there is an icon -- move the text up
+                $("#loc_name").append("<span style='vertical-align:4px;' onclick='javascript:$(\"#loc_menu\").remove();'> "+this_venue.name+"</span>");
+            }else{//there is no icon, move the text down  -- this is not working correctly at present
+                $("#loc_name").append("<span style='vertical-align:-10px;' onclick='javascript:$(\"#loc_menu\").remove();'> "+this_venue.name+"</span>");
+            }
+        }
+    }
+}
+
+//------------------- BROWSER GEOLOCATION FUNCTIONS --------------------------
+//define a global variable for the watch process
+var watchProcess = null;
+
+//start checking the location every 10 seconds
+function initiate_watchlocation() {
+    if (watchProcess == null) {
+        monitor_location = true;
+        watchProcess = navigator.geolocation.watchPosition(handle_geolocation_query, handle_errors,{'enableHighAccuracy':true,'timeout':10000,'maximumAge':20000});
+    }
+}
+
+//this function is passed a location position by the geolocation watch process
+function handle_geolocation_query(position) {
+    current_lat = position.coords.latitude;
+    current_long = position.coords.longitude;
+    set_location(position.coords.latitude, position.coords.longitude);
+}
+
+//this stops the geolocation watch
+function stop_watchlocation() {
+    if (watchProcess != null){
+        monitor_location = false;
+        navigator.geolocation.clearWatch(watchProcess);
+        watchProcess = null;
+    }
+}
+
+//error messages
+function handle_errors(error) {
+    switch(error.code)  {
+        case error.PERMISSION_DENIED: alert("User did not share geolocation data");  break;
+        case error.POSITION_UNAVAILABLE:
+            //alert("Geolocation could not detect current position.");
+            stop_watchlocation();
+            initiate_watchlocation();
+            break;
+        case error.TIMEOUT:
+            //alert("Geolocation Position Timeout");
+            stop_watchlocation();
+            initiate_watchlocation();
+            break;
+        default: //alert("Unknown Geolocation Error");  break;
+    }
+}
+
+//housekeeping to stop geolocation when the window closes
+$(window).unload(function(){
+    window.navigator.geolocation.clearWatch(watchProcess);
+    watchProcess = null;
+});
+
+
+/////////////////////////// background math for figuring the geographic radius we can see/////////////
+//area coverage per tile:
+//zoom level 16:611m
+//zoom level 17:305.5m
+//zoom level 18:152.57m
+//zoom level 19:76.29m	
+//--or-- (2^(19-current_zoom))*76.29m
+//////////////////////////////////////////////////////////////////////////////////////////////////////
+
+//ask Foursquare for venue information, using the app's client ID and client secret
+//note: jQuery "get" function
+//note: we are asking for "Restaurants, but we can search for anything with the query: parameter
+//note: because we told jQuery "json" as the last parameter, it converts the data from json to a javascript object
+
+function get_venues(venue_category){
+    current_venue_category = venue_category;
+    this_radius=Math.pow(2,(19-current_zoom))*76.29;
+    $.get("https://api.foursquare.com/v2/venues/search",{client_id:"YLVUSUEFB4TPXZUL1FORCTMN25FUBUQVUHXAH2T23Z3K5GL4",client_secret:"3WHC4NR4WWYPDNIEVTA4Y0UUMXTPN3Y1SHB1AYXM3MBBYNWM",v:"20131022",ll:current_lat+","+current_long,query:current_venue_category,intent:"browse",radius:this_radius},
+            function(data){
+                //this is the data returned from the Foursquare web service API
+                //reset the pins, the loc_menu, and the menu list
+                venue_list = [];
+                $(".pin").remove();
+                $("#loc_menu").remove();
+                $(".venue_item").remove();
+                current_loc_venue_index = null;
+                //refresh the venue_list with the new data
+                venue_list = data.response.venues;
+                //draw new pins and refresh the veue list
+                //animate the pins when they are drawn
+                for(i=0;i<venue_list.length;i++){
+                    place_pin(venue_list[i], i, true);
+                    $("#foursquare_list").append("<div id = \"v_"+i+"\" class=\"venue_item\">"+venue_list[i].name+"</div>");
+                    if(venue_list[i].menu != null){
+                        if(venue_list[i].menu.mobileUrl != null){
+                            $("#v_"+i).append("<a href='"+venue_list[i].menu.mobileUrl+"' target='_blank'><img src='arrow_icon_28.png' style='float:right;margin-right:2em;margin-top:0.3em;margin-bottom:0.3em;width:22px;height:22px;'/></a>");
+                        }
+                    }
+                }
+                menu_state = $("#menu_btn").css("display");
+                if(menu_state != "none"){
+                    if( $("#left_side_content").position().left == 0) {show_left_side_menu();}
+                }
+            },
+            "json"
+    );
+}
+/////////Foursquare API for venues -- note: more/different parameters can be supplied -- see Foursquare docs	/////////
+//	https://api.foursquare.com/v2/venues/search
+//  ?client_id=CLIENT_ID
+//  &client_secret=CLIENT_SECRET
+//  &v=20130815
+//  &ll=40.7,-74
+//  &query=sushi
+//  &radius=<calculate radius>
+//  &intent=browse
+
+
+
+//------------------- USER INTERFACE FUNCTIONS --------------------------
+
+//zoom out button
+function zoom_out(){
+    if(current_zoom > 0){
+        //reduce the curent zoom level value
+        current_zoom--;
+        if(current_venue_category != ""){
+            //if we have asked for venues, refresh the list
+            get_venues(current_venue_category);
+        }
+        //redraw the map
+        set_location(current_lat,current_long);
+    }
+
+}
+
+function zoom_in(){
+    if(current_zoom < 19){
+        //increase the curent zoom level value
+        current_zoom++;
+        if(current_venue_category != ""){
+            //if we have asked for venues, refresh the list
+            get_venues(current_venue_category);
+        }
+        //redraw the map
+        set_location(current_lat,current_long);
+    }
+}
+
+function show_left_side_menu(){
+    menu_state = $("#left_side_content").position().left;
+    if (menu_state < 0){
+        $("#content_container").animate({"margin-left":"150px"},{ duration: 500, queue:false } );
+        $("#content_container").animate({"margin-right":"-150px"},{ duration: 500, queue:false } );
+        $("#left_side_content").animate({left:0}, { duration: 500, queue:false });
+    }else{
+        $("#left_side_content").animate({left:-150},{ duration: 500, queue:false });
+        //calculate the screen margins
+        var window_width = $(window).width();
+        var margin_width = (window_width - 320) / 2;
+        $("#content_container").animate({"margin-left":margin_width},{ duration: 500, queue:false } );
+    }
+}
+
+function doneResizing(){
+
+    menu_state = $("#menu_btn").css("display");
+    if (menu_state == "none"){ 								//desktop display
+        $("#left_side_content").css("left","0");
+    }else{													//mobile display
+        $("#left_side_content").css("left","-150px");
+    }
+    $("#content_container").css("margin","auto");
+}
+
+var resizeId;
+$(document).ready(function(){
+    scrollTo(0,1);  //this hides the browser chrome on the mobile device
+    navigator.geolocation.getCurrentPosition(handle_geolocation_query);
+    initiate_watchlocation();
+
+
+    $(window).resize(function() {
+        clearTimeout(resizeId);
+        resizeId = setTimeout(doneResizing, 500);
+    });
+
+});
+
+</script>
+
+</head>
+
+<body>
+<header>
+    <div id="menu_btn" onclick="javascript:show_left_side_menu();">&#9776;</div>
+    <div id="header_text" onclick="javascript:menu_select(event,'0','0');">4square API Demo</div>
+</header>
+
+<div id = "main_container">
+    <div id="left_side_content">
+        <div id="left_side_menu">
+            <ul>
+                <li  onclick="javascript:get_venues('restaurants');">Restaurants</li>
+                <li  onclick="javascript:get_venues('music');">Music</li>
+                <li  onclick="javascript:get_venues('entertainment');">Entertainment</li>
+                <li  onclick="javascript:get_venues('arts');">Arts</li>
+            </ul>
+        </div>  <!-- left_side_menu  -->
+    </div>  <!-- left_side_content  -->
+    <div id="content_container">
+        <div id="map_window" class="map_container">
+            <div id="mdiv_00" class="map_div" style="top:    0;left:    0;"></div>
+            <div id="mdiv_01" class="map_div" style="top:    0;left:256px;"></div>
+            <div id="mdiv_02" class="map_div" style="top:    0;left:512px;"></div>
+            <div id="mdiv_10" class="map_div" style="top:256px;left:    0;"></div>
+            <div id="mdiv_11" class="map_div" style="top:256px;left:256px;"></div>
+            <div id="mdiv_12" class="map_div" style="top:256px;left:512px;"></div>
+            <div id="mdiv_20" class="map_div" style="top:512px;left:    0;"></div>
+            <div id="mdiv_21" class="map_div" style="top:512px;left:256px;"></div>
+            <div id="mdiv_22" class="map_div" style="top:512px;left:512px;"></div>
+
+            <div id="locator"><img id="loc_img" src="locator.png"/></div>
+
+        </div> <!-- map_window -->
+
+        <div id="zoom_controls">
+            <button style="float:left;margin-left:1em;" onclick="javascript:zoom_out()">Zoom Out</button>
+            <button style="float:right;margin-right:1em;" onclick="javascript:zoom_in()">Zoom In</button>
+        </div>
+
+        <div id="navigation">
+            <a href="slippy_map.html">Back to basics</a>
+        </div>
+
+        <div id="foursquare_list" style=\"display:block;clear:both;width:100%;overflow:hidden;margin-bottom:1em;\">
+            <div id="venues">Venues</div>
+        </div>    <!-- foursquare_list -->
+    </div> <!-- content_container -->
+</div> <!-- main_container -->
+</body>
+</html>
